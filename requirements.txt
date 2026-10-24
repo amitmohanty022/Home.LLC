@@ -1,5 +1,5 @@
-streamlit
-openai
-pyttsx3
-langchain
-langchain-google-genai
+streamlit>=1.50
+openai>=2.0
+gTTS>=2.5
+langchain-core>=1.0
+langchain-google-genai>=4.0

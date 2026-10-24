@@ -1,12 +1,18 @@
-import streamlit as st
-from openai import OpenAI
-import pyttsx3
-import threading
-import tempfile
 import os
 from io import BytesIO
+
+import streamlit as st
+from gtts import gTTS
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import ChatPromptTemplate
+from openai import OpenAI
+
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-6-luna")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+SYSTEM_PROMPT = (
+    "You are a thoughtful and slightly witty human being. Respond to the following question as if you "
+    "were talking to a friend. Keep your answer concise, creative, and easy to understand."
+)
 
 # Show title and description.
 st.title("💬 Voice Chatbot")
@@ -14,24 +20,13 @@ st.title("💬 Voice Chatbot")
 # Add a radio button to select the AI model
 model_option = st.radio("Select AI Model", ["OpenAI GPT", "Google Gemini"])
 
-# Function to convert text to speech
+# Function to convert text to speech.
+# gTTS returns real MP3 audio and works on hosted platforms such as Streamlit Community Cloud,
+# where pyttsx3 has no speech engine available.
 def text_to_speech(text):
-    engine = pyttsx3.init()
-    # Save to a temporary file
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmp_file:
-        temp_filename = tmp_file.name
-    
-    engine.save_to_file(text, temp_filename)
-    engine.runAndWait()
-    
-    # Read the file and return the bytes
-    with open(temp_filename, 'rb') as f:
-        audio_bytes = f.read()
-    
-    # Clean up the temporary file
-    os.unlink(temp_filename)
-    
-    return audio_bytes
+    audio = BytesIO()
+    gTTS(text=text, lang="en").write_to_fp(audio)
+    return audio.getvalue()
 
 # API key input based on selected model
 if model_option == "OpenAI GPT":
@@ -52,7 +47,7 @@ else:
         api_ready = False
     else:
         # Create a Google Gemini client via LangChain
-        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=api_key)
+        llm = ChatGoogleGenerativeAI(model=GEMINI_MODEL, google_api_key=api_key)
         api_ready = True
 
 # Create a session state variable to store the chat messages
@@ -78,7 +73,7 @@ if api_ready:
         if model_option == "OpenAI GPT":
             # Generate a response using the OpenAI API
             stream = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=OPENAI_MODEL,
                 messages=[
                     {"role": m["role"], "content": m["content"]}
                     for m in st.session_state.messages
@@ -102,25 +97,18 @@ if api_ready:
                 "audio": audio_bytes
             })
         else:
-            # Prepare the chat history for LangChain
-            chat_history = []
+            # Build the conversation for LangChain. The current prompt is already the last
+            # user message in session state, so it is not added a second time.
+            history = [SystemMessage(content=SYSTEM_PROMPT)]
             for m in st.session_state.messages:
                 if m["role"] == "user":
-                    chat_history.append({"type": "human", "content": m["content"]})
+                    history.append(HumanMessage(content=m["content"]))
                 elif m["role"] == "assistant":
-                    chat_history.append({"type": "ai", "content": m["content"]})
-            
-            # Create a prompt template with a thoughtful and witty instruction
-            prompt_template = ChatPromptTemplate.from_messages([
-                ("system", "You are a thoughtful and slightly witty human being. Respond to the following question as if you were talking to a friend. Keep your answer concise, creative, and easy to understand."),
-                *[(msg["type"], msg["content"]) for msg in chat_history],
-                ("human", prompt)
-            ])
-            
+                    history.append(AIMessage(content=m["content"]))
+
             # Generate the response
-            chain = prompt_template | llm
-            response = chain.invoke({}).content
-            
+            response = llm.invoke(history).text
+
             # Display the response
             with st.chat_message("assistant"):
                 st.markdown(response)
@@ -135,4 +123,4 @@ if api_ready:
                 "role": "assistant", 
                 "content": response,
                 "audio": audio_bytes
-            })
+            })
