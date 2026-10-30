@@ -1,5 +1,6 @@
-streamlit
-openai
-pyttsx3
-langchain
-langchain-google-genai
+streamlit>=1.66,<2
+openai>=3.41,<4
+langchain-core>=1.7,<2
+langchain-google-genai>=4.4,<5
+gTTS>=2.5
+python-dotenv>=1.0
